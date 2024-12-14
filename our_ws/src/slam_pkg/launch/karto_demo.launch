@@ -1,0 +1,8 @@
+<launch>
+
+    <include file="/home/lql/ours_ws/src/slam_pkg/launch/karto.launch"/>
+
+    <!-- 启动rviz -->
+    <node pkg="rviz" type="rviz" name="rviz" args="-d ./gmapping.rviz"/>
+
+</launch>
