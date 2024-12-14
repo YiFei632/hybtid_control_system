@@ -4,6 +4,7 @@ from nav_msgs.msg import Path, OccupancyGrid
 from std_msgs.msg import UInt8MultiArray
 import numpy as np
 from astar import astar
+import tf.transformations
 
 #rospy geometry_msgs nav_msgs std_msgs
 class PathPlannerNode:
@@ -26,7 +27,10 @@ class PathPlannerNode:
         self.map_sub = rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
 
         # 发布路径
-        self.path_pub = rospy.Publisher('/smoothed_path', Path, queue_size=10)
+        self.pose_pub = rospy.Publisher('pos_ref', Pose2D, queue_size=10)
+    # 定时调用路径规划函数
+        self.timer = rospy.Timer(rospy.Duration(1.0), self.timer_callback)
+
 
         self.current_pose = None
         self.map_data = None
@@ -38,6 +42,8 @@ class PathPlannerNode:
         x_fdb[0]=x
         x_fdb[1]=y
         x_fdb[2]=yaw
+    def timer_callback(self, event):
+        self.plan_path()
 
     def goal_queue_callback(self, msg):
         self.goal_queue.append(msg)
@@ -82,16 +88,14 @@ class PathPlannerNode:
         path_msg = Path()
         path_msg.header.stamp = rospy.Time.now()
         path_msg.header.frame_id = "map"
-
+    
         for point in fpath:
-            pose = PoseStamped()
-            pose.pose.position.x = point[0]
-            pose.pose.position.y = point[1]
-            pose.pose.orientation.w = point[2] # 假设没有朝向
-            path_msg.poses.append(pose)
+            pose_2d = Pose2D()
+            pose_2d.x = point[0]  # x 坐标
+            pose_2d.y = point[1]  # y 坐标
+            pose_2d.theta =  point[2]  # 假设没有朝向信息，可以设置为 0.0
+            self.pose_pub.publish(pose_2d)
 
-        # 发布路径
-        self.path_pub.publish(path_msg)
 
     def get_nearest_point(self, current_pose, queue):
         current_x = current_pose.x
