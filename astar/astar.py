@@ -5,12 +5,13 @@ from scipy.ndimage import binary_dilation
 
 def checkLimits(envmap, state):
     x, y = state
-    return 1 <= x <= envmap.shape[1] and 1 <= y <= envmap.shape[0] and envmap[y-1, x-1] != 1
+    # 检查是否在地图范围内并且是可通行的区域（0）
+    return 1 <= x <= envmap.shape[1] and 1 <= y <= envmap.shape[0] and envmap[y-1, x-1] == 0
 
 def astar(envmap, start, goal, epsilon=1.0, inflate_factor=0):
     """
     A* 路径规划算法。
-    :param envmap: 环境地图，0 表示自由空间，1 表示障碍物
+    :param envmap: 环境地图，0 表示自由空间，100 表示障碍物，-1 表示不可知区域
     :param start: 起点坐标，格式为 [x, y]
     :param goal: 终点坐标，格式为 [x, y]
     :param epsilon: 启发式因子，默认为 1.0
@@ -30,17 +31,22 @@ def astar(envmap, start, goal, epsilon=1.0, inflate_factor=0):
     structure = np.ones((3,3), dtype=int)
     
     # 膨胀障碍物
-    inflate_map = binary_dilation(envmap == 1, structure=structure, iterations=inflate_factor)
+    # 注意：原来的障碍物是100，所以需要调整
+    inflate_map = binary_dilation(envmap == 100, structure=structure, iterations=inflate_factor)
     
     # 更新环境地图
     envmap_inflated = envmap.copy()
-    envmap_inflated[inflate_map] = 1
+    envmap_inflated[inflate_map] = 100  # 膨胀后的区域设为障碍物
     
-    # 确保起点和终点不被设置为障碍物
-    envmap_inflated[goal[1]-1, goal[0]-1] = 0
-    envmap_inflated[start[1]-1, start[0]-1] = 0
+    # 确保起点和终点不被设置为障碍物，并且它们是可通行的
+    if envmap_inflated[goal[1]-1, goal[0]-1] != 0:
+        raise ValueError("Goal position is not passable.")
+    if envmap_inflated[start[1]-1, start[0]-1] != 0:
+        raise ValueError("Start position is not passable.")
     
     # 初始化显示地图
+    # 使用-1表示不可知区域，0表示可通行，100表示障碍物
+    # 3表示已访问，2表示待访问
     displaymap = envmap_inflated.copy()
     
     # 定义动作和成本
@@ -98,6 +104,8 @@ def astar(envmap, start, goal, epsilon=1.0, inflate_factor=0):
 
 # 示例使用：
 # envmap = np.zeros((10, 10))  # 示例地图
+# envmap[2:4, 2:4] = 100  # 设置障碍物
+# envmap[5:7, 5:7] = -1   # 设置不可知区域
 # start = [1, 1]
 # goal = [8, 8]
 # epsilon = 1.0
