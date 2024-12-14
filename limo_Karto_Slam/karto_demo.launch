@@ -1,8 +1,0 @@
-<launch>
-
-    <include file="$(find mbot_slam)/launch/karto.launch"/>
-
-    <!-- 启动rviz -->
-    <node pkg="rviz" type="rviz" name="rviz" args="-d $(find mbot_slam)/rviz/gmapping.rviz"/>
-
-</launch>
