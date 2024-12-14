@@ -11,7 +11,8 @@ class PathPlannerNode:
         rospy.init_node('path_planner_node', anonymous=True)
 
         # 订阅当前位姿
-        self.pose_sub = rospy.Subscriber('/current_pose', Pose2D, self.pose_callback)
+        self.pose_sub = rospy.Subscriber('odom',odom,odom_callback)
+
 
         # 订阅目标点队列
         self.goal_queue = []
@@ -30,8 +31,13 @@ class PathPlannerNode:
         self.current_pose = None
         self.map_data = None
 
-    def pose_callback(self, msg):
-        self.current_pose = msg
+    def odom_callback(data):
+        x=data.pose.pose.position.x
+        y=data.pose.pose.position.y
+        (roll,pitch,yaw)=tf.transformations.euler_from_quaternion([data.pose.pose.orientation.x,data.pose.pose.orientation.y,data.pose.pose.orientation.z,data.pose.pose.orientation.w])
+        x_fdb[0]=x
+        x_fdb[1]=y
+        x_fdb[2]=yaw
 
     def goal_queue_callback(self, msg):
         self.goal_queue.append(msg)
@@ -81,7 +87,7 @@ class PathPlannerNode:
             pose = PoseStamped()
             pose.pose.position.x = point[0]
             pose.pose.position.y = point[1]
-            pose.pose.orientation.w = 1.0  # 假设没有朝向
+            pose.pose.orientation.w = point[2] # 假设没有朝向
             path_msg.poses.append(pose)
 
         # 发布路径
