@@ -17,7 +17,7 @@ class PathPlannerNode:
         self.goal_sub = rospy.Subscriber('/goal', Pose2D, self.goal_callback)
         self.goal = None
 
-        # Subscribe to single man target (PoseStamped type, in meters)
+        # Subscribe to single man target (PoseStamped type, in meters relative to the robot)
         self.man_sub = rospy.Subscriber('/man', PoseStamped, self.man_callback)
         self.man_target = None
 
@@ -50,15 +50,25 @@ class PathPlannerNode:
         self.goal = msg  # Goal is in meters coordinates
 
     def man_callback(self, msg):
+        if self.current_pose is None:
+            rospy.logwarn("Current pose not available yet.")
+            return
+
         if msg.pose.position:
-            man_x = msg.pose.position.x
-            man_y = msg.pose.position.y
-            # Convert man position to grid indices
+            relative_x = msg.pose.position.x
+            relative_y = msg.pose.position.y
+            # Transform relative coordinates to map coordinates
+            robot_x = self.current_pose.x
+            robot_y = self.current_pose.y
+            robot_theta = self.current_pose.theta
+            map_x = robot_x + relative_x * math.cos(robot_theta) - relative_y * math.sin(robot_theta)
+            map_y = robot_y + relative_x * math.sin(robot_theta) + relative_y * math.cos(robot_theta)
+            # Convert map position to grid indices
             map_origin_x = self.map_info.origin.position.x
             map_origin_y = self.map_info.origin.position.y
             map_resolution = self.map_info.resolution
-            man_idx_x = int((man_x - map_origin_x) / map_resolution)
-            man_idx_y = int((man_y - map_origin_y) / map_resolution)
+            man_idx_x = int((map_x - map_origin_x) / map_resolution)
+            man_idx_y = int((map_y - map_origin_y) / map_resolution)
             self.man_target = [man_idx_x, man_idx_y]
         else:
             self.man_target = None
