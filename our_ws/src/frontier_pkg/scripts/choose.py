@@ -42,7 +42,7 @@ class GoalNavigator:
         :return: 世界坐标 (x, y)
         """
         if self.map_info is None:
-            rospy.logwarn("地图元数据不可用。")
+            rospy.logwarn("Map info is not available.")
             return None
         
         row, col = grid_point
@@ -52,7 +52,7 @@ class GoalNavigator:
     
     def find_nearest_edge_point(self, robot_position, safety_distance):
         if self.occupancy_grid is None or self.map_info is None:
-            rospy.logwarn("等待地图数据...")
+            rospy.logwarn("Waiting for map data...")
             return None
         
         # 将占据栅格地图转换为二值图像
@@ -66,7 +66,7 @@ class GoalNavigator:
         
         # 如果没有检测到任何边缘点
         if edge_points.size == 0:
-            raise ValueError("地图中未检测到边缘点。")
+            raise ValueError("No edge points detected in the map.")
         
         # 使用DBSCAN对边缘点进行聚类
         clustering = DBSCAN(eps=5, min_samples=10).fit(edge_points)
@@ -84,7 +84,7 @@ class GoalNavigator:
         
         # 如果没有候选边缘点
         if len(candidate_points) == 0:
-            raise ValueError("聚类后未找到候选边缘点。")
+            raise ValueError("No candidate edge points found after clustering.")
         
         # 将候选边缘点的栅格坐标转换为世界坐标
         world_candidate_points = [self.grid_to_world(point) for point in candidate_points]
@@ -99,7 +99,7 @@ class GoalNavigator:
         
         # 如果没有满足安全距离的点
         if len(valid_points) == 0:
-            raise ValueError("未找到满足安全距离的边缘点。")
+            raise ValueError("No valid edge point found within safety constraints.")
         
         # 找到距离小车最近的点
         nearest_point_index = np.argmin(distances)
@@ -116,21 +116,21 @@ class GoalNavigator:
     
     def navigate(self, safety_distance):
         if self.robot_position is None:
-            rospy.logwarn("等待小车位置数据...")
+            rospy.logwarn("Waiting for robot position data...")
             return
         
         try:
             nearest_point = self.find_nearest_edge_point(self.robot_position, safety_distance)
             if nearest_point:
-                rospy.loginfo(f"发布目标点: {nearest_point}")
+                rospy.loginfo(f"Publishing goal: {nearest_point}")
                 self.publish_goal(nearest_point)
         except ValueError as e:
-            rospy.logwarn(f"错误: {e}")
+            rospy.logwarn(f"Error: {e}")
 
 if __name__ == '__main__':
     navigator = GoalNavigator()
     
-    safety_distance = 0.1  # 安全距离，可根据需要调整
+    safety_distance = 5  # 安全距离，可根据需要调整
     
     rate = rospy.Rate(1)  # 1Hz
     while not rospy.is_shutdown():
