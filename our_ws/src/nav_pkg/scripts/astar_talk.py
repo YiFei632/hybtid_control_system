@@ -1,6 +1,7 @@
 import rospy
 from geometry_msgs.msg import Pose2D, PoseStamped
 from nav_msgs.msg import Path, OccupancyGrid
+from nav_msgs.msg import Odometry
 from std_msgs.msg import UInt8MultiArray
 import numpy as np
 from astar import astar
