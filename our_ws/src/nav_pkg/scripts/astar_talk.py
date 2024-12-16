@@ -1,37 +1,35 @@
 import rospy
 from geometry_msgs.msg import Pose2D, PoseStamped
-from nav_msgs.msg import Path, OccupancyGrid
-from nav_msgs.msg import Odometry
-from std_msgs.msg import UInt8MultiArray
+from nav_msgs.msg import OccupancyGrid, Odometry
 import numpy as np
 from astar import astar
 import tf.transformations
-import math  # 导入math模块
+import math
 
 class PathPlannerNode:
     def __init__(self):
         rospy.init_node('path_planner_node', anonymous=True)
 
-        # 订阅当前位姿
+        # Subscribe to current pose
         self.pose_sub = rospy.Subscriber('odom', Odometry, self.odom_callback)
 
-        # 订阅目标点（单个goal）
+        # Subscribe to single goal (grid coordinates)
         self.goal_sub = rospy.Subscriber('/goal', Pose2D, self.goal_callback)
         self.goal = None
 
-        # 订阅 man 位置（单个man目标，PoseStamped类型）
+        # Subscribe to single man target (PoseStamped type, in meters)
         self.man_sub = rospy.Subscriber('/man', PoseStamped, self.man_callback)
         self.man_target = None
 
-        # 订阅地图
+        # Subscribe to map
         self.map_sub = rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
         self.map_data = None
-        self.map_info = None  # 用于存储地图的元数据
+        self.map_info = None  # To store map metadata
 
-        # 发布路径
+        # Publish path
         self.pose_pub = rospy.Publisher('pos_ref', Pose2D, queue_size=10)
 
-        # 定时调用路径规划函数
+        # Timer to call path planning function
         self.timer = rospy.Timer(rospy.Duration(1.0), self.timer_callback)
 
         self.current_pose = None
@@ -49,68 +47,61 @@ class PathPlannerNode:
         self.plan_path()
 
     def goal_callback(self, msg):
-        self.goal = msg
+        self.goal = msg  # Goal is in grid coordinates
 
     def man_callback(self, msg):
-        self.man_target = msg
+        if msg.pose.position:
+            man_x = msg.pose.position.x
+            man_y = msg.pose.position.y
+            # Convert man position to grid indices
+            map_origin_x = self.map_info.origin.position.x
+            map_origin_y = self.map_info.origin.position.y
+            map_resolution = self.map_info.resolution
+            man_idx_x = int((man_x - map_origin_x) / map_resolution)
+            man_idx_y = int((man_y - map_origin_y) / map_resolution)
+            self.man_target = [man_idx_x, man_idx_y]
+        else:
+            self.man_target = None
 
     def map_callback(self, msg):
-        # 将 OccupancyGrid 转换为二维数组
+        # Convert OccupancyGrid to 2D numpy array
         width = msg.info.width
         height = msg.info.height
         data = msg.data
         self.map_data = np.array(data).reshape(height, width)
-        self.map_info = msg.info  # 保存地图的元数据，如origin和resolution
+        self.map_info = msg.info  # Store map metadata
 
     def plan_path(self):
         if self.current_pose is None or self.map_data is None:
             return
 
-        # 优先导航到man目标，如果man目标为空，则导航到goal目标
-        if self.man_target and self.man_target.pose.position:
-            target = self.man_target.pose.position
-            target_x = target.x
-            target_y = target.y
+        # Prioritize man_target, if available, else use goal
+        if self.man_target:
+            goal_idx = self.man_target
         elif self.goal:
-            target = self.goal
-            target_x = target.x
-            target.y = target.y
+            goal_idx = [self.goal.x, self.goal.y]
         else:
             rospy.loginfo("No goals or man positions available.")
             return
 
-        # 提取起点和终点坐标
-        start = [self.current_pose.x, self.current_pose.y]
-        goal = [target_x, target_y]
-
-        # 转换起点和终点到地图的索引
+        # Convert current pose to grid indices
         map_origin_x = self.map_info.origin.position.x
         map_origin_y = self.map_info.origin.position.y
         map_resolution = self.map_info.resolution
-
         start_idx = [
-            int((start[0] - map_origin_x) / map_resolution),
-            int((start[1] - map_origin_y) / map_resolution)
-        ]
-        goal_idx = [
-            int((goal[0] - map_origin_x) / map_resolution),
-            int((goal[1] - map_origin_y) / map_resolution)
+            int((self.current_pose.x - map_origin_x) / map_resolution),
+            int((self.current_pose.y - map_origin_y) / map_resolution)
         ]
 
-        # 调用 A* 算法规划路径
+        # Call A* algorithm for path planning
         fpath, cost, displaymap = astar(self.map_data, start_idx, goal_idx, epsilon=1.0, inflate_factor=5)
 
         if fpath is None:
             rospy.logwarn("No path found.")
             return
 
-        # 创建 Path 消息
-        path_msg = Path()
-        path_msg.header.stamp = rospy.Time.now()
-        path_msg.header.frame_id = "map"
-
-        # 发布路径点
-        for i in range(len(fpath)):
+        # Publish path points
+        for i in range(len(fpath)-1):
             point = fpath[i]
             next_point = fpath[i+1]
             dx = next_point[0] - point[0]
@@ -122,7 +113,14 @@ class PathPlannerNode:
             pose_2d.theta = theta
             self.pose_pub.publish(pose_2d)
 
-        # 处理最后一个点
+        # Handle last point
+        if len(fpath) > 0:
+            last_point = fpath[-1]
+            pose_2d = Pose2D()
+            pose_2d.x = last_point[0] * map_resolution + map_origin_x
+            pose_2d.y = last_point[1] * map_resolution + map_origin_y
+            pose_2d.theta = 0.0
+            self.pose_pub.publish(pose_2d)
 
 if __name__ == '__main__':
     try:
