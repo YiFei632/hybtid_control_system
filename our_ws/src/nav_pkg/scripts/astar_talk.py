@@ -13,7 +13,7 @@ class PathPlannerNode:
         # Subscribe to current pose
         self.pose_sub = rospy.Subscriber('odom', Odometry, self.odom_callback)
 
-        # Subscribe to single goal (grid coordinates)
+        # Subscribe to single goal (meters coordinates)
         self.goal_sub = rospy.Subscriber('/goal', Pose2D, self.goal_callback)
         self.goal = None
 
@@ -47,7 +47,7 @@ class PathPlannerNode:
         self.plan_path()
 
     def goal_callback(self, msg):
-        self.goal = msg  # Goal is in grid coordinates
+        self.goal = msg  # Goal is in meters coordinates
 
     def man_callback(self, msg):
         if msg.pose.position:
@@ -79,7 +79,11 @@ class PathPlannerNode:
         if self.man_target:
             goal_idx = self.man_target
         elif self.goal:
-            goal_idx = [self.goal.x, self.goal.y]
+            # Convert goal from meters to grid indices
+            goal_idx = [
+                int((self.goal.x - self.map_info.origin.position.x) / self.map_info.resolution),
+                int((self.goal.y - self.map_info.origin.position.y) / self.map_info.resolution)
+            ]
         else:
             rospy.loginfo("No goals or man positions available.")
             return
