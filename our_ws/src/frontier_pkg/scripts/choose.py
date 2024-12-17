@@ -13,7 +13,7 @@ class GoalNavigator:
         rospy.init_node('goal_navigator', anonymous=True)
         
         # 发布目标点
-        self.goal_pub = rospy.Publisher('/goal_point', PointStamped, queue_size=10)
+        self.goal_pub = rospy.Publisher('/goal_point', PointStamped, queue_size=1)  # 设置队列大小为1
         
         # 订阅栅格地图
         self.map_sub = rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
