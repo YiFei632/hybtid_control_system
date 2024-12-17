@@ -39,11 +39,11 @@ def astar(envmap, start, goal, epsilon=1.0, inflate_factor=0):
     envmap_inflated[inflate_map] = 100  # 膨胀后的区域设为障碍物
     
     # 确保起点和终点不被设置为障碍物，并且它们是可通行的
-    if envmap_inflated[goal[1]-2, goal[0]-2] != 100:
-        print(envmap_inflated[goal[1]-2, goal[0]-2])
+    if envmap_inflated[goal[0]-1, goal[1]-1] != 0:
+        print(envmap_inflated[goal[0]-1, goal[1]-1])
         raise ValueError("Goal position is not passable.")
-    if envmap_inflated[start[1]-2, start[0]-2] != 100:
-        print(envmap_inflated[start[1]-2, start[0]-2])
+    if envmap_inflated[start[0]-1, start[1]-1] != 0:
+        print(envmap_inflated[start[0]-1, start[1]-1])
         raise ValueError("Start position is not passable.")
     
     # 初始化显示地图
@@ -92,6 +92,9 @@ def astar(envmap, start, goal, epsilon=1.0, inflate_factor=0):
     current = tuple(goal)
     
     while current != tuple(start):
+        if current not in parents:
+            print("No path found.")
+            return np.array([]), 0, displaymap
         fpath.append(current)
         next_node = parents[current]
         cost += np.sqrt((current[0] - next_node[0])**2 + (current[1] - next_node[1])**2)
