@@ -151,7 +151,7 @@ class GoalNavigator:
 if __name__ == '__main__':
     navigator = GoalNavigator()
     
-    safety_distance = 0.5  # 安全距离，可根据需要调整
+    safety_distance = 0.2  # 安全距离，可根据需要调整
     
     rate = rospy.Rate(1)  # 1Hz
     while not rospy.is_shutdown():
