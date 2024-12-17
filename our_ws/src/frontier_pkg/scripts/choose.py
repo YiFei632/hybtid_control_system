@@ -1,9 +1,11 @@
+#!/usr/bin/env python
+# coding:utf-8
 import rospy
 import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
-from geometry_msgs.msg import Pose2D, Odometry
-from nav_msgs.msg import OccupancyGrid
+from geometry_msgs.msg import PointStamped
+from nav_msgs.msg import OccupancyGrid, Odometry
 
 class GoalNavigator:
     def __init__(self):
@@ -11,7 +13,7 @@ class GoalNavigator:
         rospy.init_node('goal_navigator', anonymous=True)
         
         # 发布目标点
-        self.goal_pub = rospy.Publisher('/goal_point', Pose2D, queue_size=1)
+        self.goal_pub = rospy.Publisher('/goal_point', PointStamped, queue_size=10)
         
         # 订阅栅格地图
         self.map_sub = rospy.Subscriber('/map', OccupancyGrid, self.map_callback)
@@ -25,6 +27,7 @@ class GoalNavigator:
         
         # 存储小车的位置
         self.robot_position = None
+        self.found=False
     
     def map_callback(self, msg):
         # 将OccupancyGrid消息转换为numpy数组
@@ -66,7 +69,9 @@ class GoalNavigator:
         
         # 如果没有检测到任何边缘点
         if edge_points.size == 0:
-            raise ValueError("No edge points detected in the map.")
+            
+            rospy.loginfo("No edge points detected in the map.")
+            return None
         
         # 使用DBSCAN对边缘点进行聚类
         clustering = DBSCAN(eps=5, min_samples=10).fit(edge_points)
@@ -84,7 +89,8 @@ class GoalNavigator:
         
         # 如果没有候选边缘点
         if len(candidate_points) == 0:
-            raise ValueError("No candidate edge points found after clustering.")
+            rospy.loginfo("No candidate edge points found after clustering.")
+            return None
         
         # 将候选边缘点的栅格坐标转换为世界坐标
         world_candidate_points = [self.grid_to_world(point) for point in candidate_points]
@@ -99,7 +105,8 @@ class GoalNavigator:
         
         # 如果没有满足安全距离的点
         if len(valid_points) == 0:
-            raise ValueError("No valid edge point found within safety constraints.")
+            rospy.loginfo("No valid edge point found within safety constraints.")
+            return None
         
         # 找到距离小车最近的点
         nearest_point_index = np.argmin(distances)
@@ -108,10 +115,11 @@ class GoalNavigator:
         return nearest_point  # 返回世界坐标 (x, y)
     
     def publish_goal(self, goal):
-        goal_msg = Pose2D()
-        goal_msg.x = goal[0]  # 世界坐标 (x, y)
-        goal_msg.y = goal[1]
-        goal_msg.theta = 0  # 目标点的角度设为0（可根据需要修改）
+        goal_msg = PointStamped()
+        goal_msg.header.frame_id="map"
+        goal_msg.point.x = goal[0]  # 世界坐标 (x, y)
+        goal_msg.point.y = goal[1]
+        goal_msg.point.z = 0  # 目标点的角度设为0（可根据需要修改）
         self.goal_pub.publish(goal_msg)
     
     def navigate(self, safety_distance):
@@ -121,7 +129,9 @@ class GoalNavigator:
         
         try:
             nearest_point = self.find_nearest_edge_point(self.robot_position, safety_distance)
-            if nearest_point:
+            if nearest_point is None:
+                self.publish_goal(np.array([0,0,0]))
+            else:
                 rospy.loginfo(f"Publishing goal: {nearest_point}")
                 self.publish_goal(nearest_point)
         except ValueError as e:
@@ -130,7 +140,7 @@ class GoalNavigator:
 if __name__ == '__main__':
     navigator = GoalNavigator()
     
-    safety_distance = 5  # 安全距离，可根据需要调整
+    safety_distance = 0.1  # 安全距离，可根据需要调整
     
     rate = rospy.Rate(1)  # 1Hz
     while not rospy.is_shutdown():

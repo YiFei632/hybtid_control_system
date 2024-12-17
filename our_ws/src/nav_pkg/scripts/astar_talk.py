@@ -1,5 +1,7 @@
+#!/usr/bin/env python
+# coding:utf-8
 import rospy
-from geometry_msgs.msg import Pose2D, PoseStamped
+from geometry_msgs.msg import Pose2D, PointStamped
 from nav_msgs.msg import OccupancyGrid, Odometry
 import numpy as np
 from astar import astar
@@ -14,11 +16,11 @@ class PathPlannerNode:
         self.pose_sub = rospy.Subscriber('odom', Odometry, self.odom_callback)
 
         # Subscribe to single goal (meters coordinates)
-        self.goal_sub = rospy.Subscriber('/goal', Pose2D, self.goal_callback)
+        self.goal_sub = rospy.Subscriber('/goal_point', PointStamped, self.goal_callback)
         self.goal = None
 
-        # Subscribe to single man target (PoseStamped type, in meters relative to the robot)
-        self.man_sub = rospy.Subscriber('/man', PoseStamped, self.man_callback)
+        # Subscribe to single man target (PointStamped type, in meters relative to the robot)
+        self.man_sub = rospy.Subscriber('/man', PointStamped, self.man_callback)
         self.man_target = None
 
         # Subscribe to map
@@ -47,17 +49,23 @@ class PathPlannerNode:
         self.plan_path()
 
     def goal_callback(self, msg):
-        self.goal = msg  # Goal is in meters coordinates
+        if msg.point:
+            self.goal=[msg.point.x,msg.point.y]
+        else:
+            self.goal=None
 
     def man_callback(self, msg):
         if self.current_pose is None:
             rospy.logwarn("Current pose not available yet.")
             return
 
-        if msg.pose.position:
-            relative_x = msg.pose.position.x
-            relative_y = msg.pose.position.y
+        if msg.point:
+            relative_x = msg.point.x
+            relative_y = msg.point.y
             # Transform relative coordinates to map coordinates
+            if abs(relative_x)<0.2 and abs(relative_y)<0.2:
+                self.man_target=None
+                return
             robot_x = self.current_pose.x
             robot_y = self.current_pose.y
             robot_theta = self.current_pose.theta
@@ -91,8 +99,8 @@ class PathPlannerNode:
         elif self.goal:
             # Convert goal from meters to grid indices
             goal_idx = [
-                int((self.goal.x - self.map_info.origin.position.x) / self.map_info.resolution),
-                int((self.goal.y - self.map_info.origin.position.y) / self.map_info.resolution)
+                int((self.goal[0] - self.map_info.origin.position.x) / self.map_info.resolution),
+                int((self.goal[1] - self.map_info.origin.position.y) / self.map_info.resolution)
             ]
         else:
             rospy.loginfo("No goals or man positions available.")
@@ -108,7 +116,7 @@ class PathPlannerNode:
         ]
 
         # Call A* algorithm for path planning
-        fpath, cost, displaymap = astar(self.map_data, start_idx, goal_idx, epsilon=1.0, inflate_factor=5)
+        fpath, cost, displaymap = astar(self.map_data, start_idx, goal_idx, epsilon=1.0, inflate_factor=0)
 
         if fpath is None:
             rospy.logwarn("No path found.")

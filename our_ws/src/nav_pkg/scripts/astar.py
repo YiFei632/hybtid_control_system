@@ -39,9 +39,9 @@ def astar(envmap, start, goal, epsilon=1.0, inflate_factor=0):
     envmap_inflated[inflate_map] = 100  # 膨胀后的区域设为障碍物
     
     # 确保起点和终点不被设置为障碍物，并且它们是可通行的
-    if envmap_inflated[goal[1]-1, goal[0]-1] != 0:
+    if envmap_inflated[goal[1]-2, goal[0]-2] != 100:
         raise ValueError("Goal position is not passable.")
-    if envmap_inflated[start[1]-1, start[0]-1] != 0:
+    if envmap_inflated[start[1]-2, start[0]-2] != 100:
         raise ValueError("Start position is not passable.")
     
     # 初始化显示地图
