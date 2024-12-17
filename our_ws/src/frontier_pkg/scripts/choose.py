@@ -27,7 +27,7 @@ class GoalNavigator:
         
         # 存储小车的位置
         self.robot_position = None
-        self.found=False
+        self.found = False
     
     def map_callback(self, msg):
         # 将OccupancyGrid消息转换为numpy数组
@@ -53,7 +53,7 @@ class GoalNavigator:
         y = self.map_info.origin.position.y + (row + 0.5) * self.map_info.resolution
         return (x, y)
     
-    def find_nearest_edge_point(self, robot_position, safety_distance):
+    def find_nearest_edge_point(self, robot_position):
         if self.occupancy_grid is None or self.map_info is None:
             rospy.logwarn("Waiting for map data...")
             return None
@@ -69,7 +69,6 @@ class GoalNavigator:
         
         # 如果没有检测到任何边缘点
         if edge_points.size == 0:
-            
             rospy.loginfo("No edge points detected in the map.")
             return None
         
@@ -95,18 +94,10 @@ class GoalNavigator:
         # 将候选边缘点的栅格坐标转换为世界坐标
         world_candidate_points = [self.grid_to_world(point) for point in candidate_points]
         
-        # 找到距离小车最近的候选边缘点，并确保满足安全距离
+        # 找到距离小车最近的候选边缘点
         robot_position = np.array(robot_position)
         world_candidate_points = np.array(world_candidate_points)
         distances = np.linalg.norm(world_candidate_points - robot_position, axis=1)
-        
-        # 过滤掉不满足安全距离的点
-        valid_points = world_candidate_points[distances >= safety_distance]
-        
-        # 如果没有满足安全距离的点
-        if len(valid_points) == 0:
-            rospy.loginfo("No valid edge point found within safety constraints.")
-            return None
         
         # 找到距离小车最近的点
         nearest_point_index = np.argmin(distances)
@@ -114,9 +105,25 @@ class GoalNavigator:
         
         return nearest_point  # 返回世界坐标 (x, y)
     
+    def calculate_goal_point(self, robot_position, nearest_edge_point, safety_distance):
+        """
+        计算目标点，使得目标点与最近边缘点之间的距离等于安全距离，并且目标点位于小车和最近边缘点之间
+        """
+        robot_position = np.array(robot_position)
+        nearest_edge_point = np.array(nearest_edge_point)
+        
+        # 计算从机器人到最近边缘点的向量
+        direction_vector = nearest_edge_point - robot_position
+        direction_vector_norm = direction_vector / np.linalg.norm(direction_vector)
+        
+        # 计算目标点
+        goal_point = nearest_edge_point - direction_vector_norm * safety_distance
+        
+        return goal_point
+    
     def publish_goal(self, goal):
         goal_msg = PointStamped()
-        goal_msg.header.frame_id="map"
+        goal_msg.header.frame_id = "map"
         goal_msg.point.x = goal[0]  # 世界坐标 (x, y)
         goal_msg.point.y = goal[1]
         goal_msg.point.z = 0  # 目标点的角度设为0（可根据需要修改）
@@ -128,19 +135,23 @@ class GoalNavigator:
             return
         
         try:
-            nearest_point = self.find_nearest_edge_point(self.robot_position, safety_distance)
-            if nearest_point is None:
-                self.publish_goal(np.array([0,0,0]))
-            else:
-                rospy.loginfo(f"Publishing goal: {nearest_point}")
-                self.publish_goal(nearest_point)
+            nearest_edge_point = self.find_nearest_edge_point(self.robot_position)
+            if nearest_edge_point is None:
+                rospy.loginfo("No edge points found.")
+                return
+            
+            # 计算目标点
+            goal_point = self.calculate_goal_point(self.robot_position, nearest_edge_point, safety_distance)
+            
+            rospy.loginfo(f"Publishing goal: {goal_point}")
+            self.publish_goal(goal_point)
         except ValueError as e:
             rospy.logwarn(f"Error: {e}")
 
 if __name__ == '__main__':
     navigator = GoalNavigator()
     
-    safety_distance = 0.1  # 安全距离，可根据需要调整
+    safety_distance = 0.5  # 安全距离，可根据需要调整
     
     rate = rospy.Rate(1)  # 1Hz
     while not rospy.is_shutdown():
