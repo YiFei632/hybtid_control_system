@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 # coding:utf-8
 import rospy
-import cv2
 import numpy as np
 from sklearn.cluster import DBSCAN
 from geometry_msgs.msg import PointStamped
 from nav_msgs.msg import OccupancyGrid, Odometry
+from math import sqrt
 
 class GoalNavigator:
     def __init__(self):
@@ -53,27 +53,34 @@ class GoalNavigator:
         y = self.map_info.origin.position.y + (row + 0.5) * self.map_info.resolution
         return (x, y)
     
-    def find_nearest_edge_point(self, robot_position):
+    def find_nearest_edge_point(self, robot_position, safety_distance):
         if self.occupancy_grid is None or self.map_info is None:
             rospy.logwarn("Waiting for map data...")
             return None
 
-        # 获取已探索区域（值为0）与未探索区域（值为-1）之间的边缘
-        explored_map = np.where(self.occupancy_grid == 0, 1, 0).astype(np.uint8)  # 已探索区域设为1
-        unexplored_map = np.where(self.occupancy_grid == -1, -1, 0).astype(np.uint8)  # 未探索区域设为-1
-
-        # 计算边缘
-        edges = cv2.Canny(explored_map | unexplored_map, 50, 150)  # 合并已探索和未探索区域边缘
-
-        # 提取边缘点的坐标（栅格坐标）
-        edge_points = np.column_stack(np.where(edges > 0))
+        # 获取边缘点：遍历已探索区域（值为0），检查其周围是否有未探索区域（值为-1）
+        edge_points = []
+        rows, cols = self.occupancy_grid.shape
+        for i in range(rows):
+            for j in range(cols):
+                if self.occupancy_grid[i, j] == 0:  # 已探索区域
+                    # 检查四个邻域（上、下、左、右）是否是未探索区域（-1）
+                    neighbors = [
+                        (i-1, j), (i+1, j), (i, j-1), (i, j+1)  # 上、下、左、右邻居
+                    ]
+                    for ni, nj in neighbors:
+                        if 0 <= ni < rows and 0 <= nj < cols:
+                            if self.occupancy_grid[ni, nj] == -1:  # 邻域是未探索区域
+                                edge_points.append((i, j))
+                                break
 
         # 如果没有检测到任何边缘点
-        if edge_points.size == 0:
+        if len(edge_points) == 0:
             rospy.loginfo("No edge points detected in the map.")
             return None
 
         # 使用DBSCAN对边缘点进行聚类
+        edge_points = np.array(edge_points)
         clustering = DBSCAN(eps=5, min_samples=10).fit(edge_points)
         labels = clustering.labels_
 
@@ -104,7 +111,10 @@ class GoalNavigator:
         nearest_point_index = np.argmin(distances)
         nearest_point = world_candidate_points[nearest_point_index]
 
-        return nearest_point  # 返回世界坐标 (x, y)
+        # 计算目标点：确保目标点与边缘点之间有安全距离
+        goal_point = self.calculate_goal_point(robot_position, nearest_point, safety_distance)
+
+        return goal_point  # 返回目标点
     
     def calculate_goal_point(self, robot_position, nearest_edge_point, safety_distance):
         """
@@ -136,13 +146,10 @@ class GoalNavigator:
             return
         
         try:
-            nearest_edge_point = self.find_nearest_edge_point(self.robot_position)
-            if nearest_edge_point is None:
+            goal_point = self.find_nearest_edge_point(self.robot_position, safety_distance)
+            if goal_point is None:
                 rospy.loginfo("No edge points found.")
                 return
-            
-            # 计算目标点
-            goal_point = self.calculate_goal_point(self.robot_position, nearest_edge_point, safety_distance)
             
             rospy.loginfo(f"Publishing goal: {goal_point}")
             self.publish_goal(goal_point)
