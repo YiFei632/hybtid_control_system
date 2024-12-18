@@ -57,25 +57,26 @@ class GoalNavigator:
         if self.occupancy_grid is None or self.map_info is None:
             rospy.logwarn("Waiting for map data...")
             return None
-        
-        # 将占据栅格地图转换为二值图像
-        binary_map = np.where(self.occupancy_grid == 100, 255, 0).astype(np.uint8)  # 障碍物设为255
-        
-        # 检测边缘
-        edges = cv2.Canny(binary_map, 50, 150)
-        
+
+        # 获取已探索区域（值为0）与未探索区域（值为-1）之间的边缘
+        explored_map = np.where(self.occupancy_grid == 0, 1, 0).astype(np.uint8)  # 已探索区域设为1
+        unexplored_map = np.where(self.occupancy_grid == -1, 1, 0).astype(np.uint8)  # 未探索区域设为1
+
+        # 计算边缘
+        edges = cv2.Canny(explored_map | unexplored_map, 50, 150)  # 合并已探索和未探索区域边缘
+
         # 提取边缘点的坐标（栅格坐标）
         edge_points = np.column_stack(np.where(edges > 0))
-        
+
         # 如果没有检测到任何边缘点
         if edge_points.size == 0:
             rospy.loginfo("No edge points detected in the map.")
             return None
-        
+
         # 使用DBSCAN对边缘点进行聚类
         clustering = DBSCAN(eps=5, min_samples=10).fit(edge_points)
         labels = clustering.labels_
-        
+
         # 选择聚类中心作为候选边缘点
         candidate_points = []
         unique_labels = set(labels)
@@ -85,24 +86,24 @@ class GoalNavigator:
             cluster_points = edge_points[labels == label]
             cluster_center = np.mean(cluster_points, axis=0).astype(int)
             candidate_points.append(cluster_center)
-        
+
         # 如果没有候选边缘点
         if len(candidate_points) == 0:
             rospy.loginfo("No candidate edge points found after clustering.")
             return None
-        
+
         # 将候选边缘点的栅格坐标转换为世界坐标
         world_candidate_points = [self.grid_to_world(point) for point in candidate_points]
-        
+
         # 找到距离小车最近的候选边缘点
         robot_position = np.array(robot_position)
         world_candidate_points = np.array(world_candidate_points)
         distances = np.linalg.norm(world_candidate_points - robot_position, axis=1)
-        
+
         # 找到距离小车最近的点
         nearest_point_index = np.argmin(distances)
         nearest_point = world_candidate_points[nearest_point_index]
-        
+
         return nearest_point  # 返回世界坐标 (x, y)
     
     def calculate_goal_point(self, robot_position, nearest_edge_point, safety_distance):
