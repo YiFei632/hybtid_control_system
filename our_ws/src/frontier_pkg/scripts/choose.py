@@ -60,7 +60,7 @@ class GoalNavigator:
 
         # 获取已探索区域（值为0）与未探索区域（值为-1）之间的边缘
         explored_map = np.where(self.occupancy_grid == 0, 1, 0).astype(np.uint8)  # 已探索区域设为1
-        unexplored_map = np.where(self.occupancy_grid == -1, 1, 0).astype(np.uint8)  # 未探索区域设为1
+        unexplored_map = np.where(self.occupancy_grid == -1, -1, 0).astype(np.uint8)  # 未探索区域设为-1
 
         # 计算边缘
         edges = cv2.Canny(explored_map | unexplored_map, 50, 150)  # 合并已探索和未探索区域边缘
